@@ -1,0 +1,287 @@
+---
+title: "Project_2"
+author: "Regis Ouedraogo"
+date: '2022-11-03'
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+PROJECT:
+
+2. Use the Stock returns from the 3 stocks:
+Estimate the Beta’s for each stock.
+
+Estimate the Expected Return for each stock. Use formulas in Part E
+
+3. Build a Linear Model for the Three-Factor-Model , using the indices from website
+
+Estimate the Expected Return for each stock, using the Fama-French data. Use formulas inf Part F
+
+Compare with the previous results in (2). 
+
+
+(1) Explore stock prices- returns
+
+
+```{r}
+library(quantmod)
+
+start<- as.Date("2020-11-04")
+end<- as.Date("2022-11-03")
+btc <-getSymbols("BTC",from=start, to=end, auto.assign=F)
+wmt <-getSymbols("WMT",from=start, to=end, auto.assign=F)
+atom <-getSymbols("ATOM",from=start, to=end, auto.assign=F)
+returns.BTC <- dailyReturn(btc$BTC.Close)
+returns.WMT <- dailyReturn(wmt$WMT.Close)
+returns.ATOM <- dailyReturn(atom$ATOM.Close)
+```
+
+
+## combine into an xts-object of all returns
+
+```{r}
+returns <-cbind(returns.BTC, returns.WMT ,returns.ATOM)
+colnames(returns)<- c("BTC.ret", "WMT.ret", "ATOM.ret")
+head(returns)
+```
+
+
+## Returns of BTC, WMT Inspection of returns
+```{r}
+hist(returns.BTC, probability = TRUE, main="btc returns")
+# calculate skewness in r
+#install.packages("moments")
+library(moments)
+skewness(returns.BTC)
+kurtosis(returns.BTC)
+
+```
+```{r}
+#install.packages("e1071")
+ library(e1071)     
+log.ret_Btc <- log(1+returns.BTC)
+hist(log.ret_Btc)
+skewness(log.ret_Btc)
+```
+
+```{r}
+log.ret_ATOM <- log(1+returns.ATOM)
+hist(log.ret_ATOM)
+skewness(log.ret_ATOM)
+```
+
+```{r}
+log.ret_wmt <- log(1+returns.WMT)
+hist(log.ret_wmt)
+skewness(log.ret_wmt)
+```
+```{r}
+mu.d <- mean(log.ret_ATOM)
+median.d <- median(log.ret_ATOM)
+sigma.d <- sd(log.ret_ATOM)
+
+cat(" ATOM Mean:", round(mu.d, 6), "\n",
+    "ATOM Median:", round(median.d, 6), "\n",
+    "ATOM Standard Deviation:", round(sigma.d, 6))
+```
+
+
+```{r}
+mu.d <- mean(log.ret_Btc)
+median.d <- median(log.ret_Btc)
+sigma.d <- sd(log.ret_Btc)
+
+cat(" BTC Mean:", round(mu.d, 6), "\n",
+    "BTC Median:", round(median.d, 6), "\n",
+    "BTC Standard Deviation:", round(sigma.d, 6))
+```
+
+
+
+```{r}
+mu.d <- mean(log.ret_wmt)
+median.d <- median(log.ret_wmt)
+sigma.d <- sd(log.ret_wmt)
+
+cat(" WMT Mean:", round(mu.d, 6), "\n",
+    "WMT Median:", round(median.d, 6), "\n",
+    "WMT Standard Deviation:", round(sigma.d, 6))
+```
+
+
+
+
+(2) Efficiency Frontier
+### Efficient frontier
+```{r}
+
+wt1 <- seq(-2,2, by=.1)
+wt2 <-seq(-2,2, by=.1)
+wt3 <- 1 -wt1-wt2
+wts<- cbind(wt1,wt2,wt3)
+mean.returns <- apply(returns, 2, mean)
+covariance <- 252*cov(returns) # annualized variance/covariance
+covariance
+```
+
+```{r}
+## calculate portfolio return and risk
+port.return <- c()
+for (i in 1:41){
+port.return[i] <- wts[i, ] %*% mean.returns
+}
+head(port.return)
+## calculate portfolio risk
+port.variance <-c()
+for (i in 1:41) {
+ port.variance[i] <- t(wts[i , ]) %*% covariance %*% wts[i , ]
+
+}
+head(port.variance)
+port.risk <-sqrt(port.variance) ## risk is square root of variance
+head(port.risk)
+plot(port.risk, port.return, type="b", main="Efficient Frontier,BTC+WMT+ATOM")
+```
+
+
+(3) Risk-free rate and Market Portfolio return
+
+```{r}
+
+rf<-getSymbols("DGS1",src="FRED" ,auto.assign = F)
+dim(rf)
+
+#rf1 <- rf[ date >= "2021-11-04" & date<="2022-11-03", ]
+rf <- na.omit(rf)
+riskfree <-mean(rf)/100
+riskfree
+
+```
+
+
+## Market portfolio
+
+```{r}
+
+benchmark<-getSymbols.yahoo("^GSPC", from=start, to=end, periodicity = "daily",auto.assign=F)[ ,4]
+bench.returns <- dailyReturn(benchmark) 
+```
+
+(5) Study of individual stock return: beta
+
+```{r}
+## beta for BTC
+beta.BTC <- cov(bench.returns, returns.BTC)/var(bench.returns)
+beta.BTC
+
+## beta for USDC
+beta.WMT <- cov(bench.returns, returns.WMT)/var(bench.returns)
+beta.WMT
+
+## beta for ATOM
+beta.ATOM<- cov(bench.returns, returns.ATOM)/var(bench.returns)
+beta.ATOM
+```
+
+3 -Factor Pricing Model: 
+
+```{r}
+# use read.table for text file
+ff_data = read.csv("F-F_Research_Data_Factors_daily.CSV", skip = 3)
+ff_data = na.omit(ff_data)  #remove missing values
+
+head(ff_data)  #date is missing column names
+```
+
+
+```{r}
+colnames(ff_data)[1] = "Date"
+# convert dates in R date format
+ff_data$Date = as.Date(strptime(ff_data$Date, format = "%Y%m%d"))
+head(ff_data)
+```
+
+
+```{r}
+d_wmt = getSymbols("WMT", from = "2020-11-03", to = "2022-11-03", auto.assign = F)
+# select closing prices and covert to log returns
+
+wmt = d_wmt$WMT.Close
+wmt_ret = dailyReturn(wmt, type = "log")
+
+# convert to data frame
+wmt_ret2 = fortify.zoo(wmt_ret)  #Dates column will be named Index
+
+# rename
+colnames(wmt_ret2) = c("Date", "WMT")
+
+# use merge (can use left_join from dplyr as well) to combine the
+# stock returns and factor data
+
+data_ffex = merge(wmt_ret2, ff_data, by = "Date")
+
+# create another column with WMT-RF
+
+data_ffex$WMT.Rf = data_ffex$WMT - data_ffex$RF
+
+ff_lreg = lm(WMT.Rf ~ Mkt.RF, data = data_ffex)
+summary(ff_lreg)
+```
+
+```{r}
+
+d_btc = getSymbols("BTC", from = "2020-11-03", to = "2022-11-03", auto.assign = F)
+# select closing prices and covert to log returns
+
+btc = d_btc$BTC.Close
+btc_ret = dailyReturn(btc, type = "log")
+
+# convert to data frame
+btc_ret2 = fortify.zoo(btc_ret)  #Dates column will be named Index
+
+# rename
+colnames(btc_ret2) = c("Date", "BTC")
+
+# use merge (can use left_join from dplyr as well) to combine the
+# stock returns and factor data
+
+data_ffex = merge(btc_ret2, ff_data, by = "Date")
+
+# create another column with BTC-RF
+
+data_ffex$BTC.Rf = data_ffex$BTC - data_ffex$RF
+
+ff_lreg = lm(BTC.Rf ~ Mkt.RF , data = data_ffex)
+summary(ff_lreg)
+```
+
+```{r}
+
+d_atom = getSymbols("ATOM", from = "2020-11-03", to = "2022-11-03", auto.assign = F)
+# select closing prices and covert to log returns
+
+atom = d_atom$ATOM.Close
+atom_ret = dailyReturn(atom, type = "log")
+
+# convert to data frame
+atom_ret2 = fortify.zoo(atom_ret)  #Dates column will be named Index
+
+# rename
+colnames(atom_ret2) = c("Date", "ATOM")
+
+# use merge (can use left_join from dplyr as well) to combine the
+# stock returns and factor data
+
+data_ffex = merge(atom_ret2, ff_data, by = "Date")
+
+# create another column with ATOM-RF
+
+data_ffex$ATOM.Rf = data_ffex$ATOM - data_ffex$RF
+
+ff_lreg = lm(data_ffex$RF~ Mkt.RF + SMB + HML, data = data_ffex)
+summary(ff_lreg)
+```
+
+
